@@ -250,5 +250,57 @@ class IntelligenceAPITests(unittest.TestCase):
             main.API_KEY = original_key
 
 
+    def test_unified_assessment_includes_quantum_trust_and_audits_it(self):
+        original_ledger = main.ledger
+        original_key = main.API_KEY
+        expected_quantum = {
+            "engine": "QuantumTrust Engine",
+            "assessment_state": "ELEVATED_REVIEW",
+            "quantum_hardware_used": False,
+            "quantum_era_cryptographic_risk": {
+                "assessment_status": "ASSESSED",
+                "readiness": "MIGRATION_REQUIRED",
+                "quantum_era_exposure_score": 100.0,
+            },
+        }
+        with tempfile.TemporaryDirectory() as folder:
+            try:
+                main.ledger = AuditLedger(Path(folder) / "quantum-audit.db")
+                main.API_KEY = ""
+                payload = assessment_payload()
+                payload["security_context"] = {
+                    "key_exchange_algorithm": "ECDHE",
+                    "signature_algorithm": "RSA-2048",
+                    "symmetric_algorithm": "AES-256",
+                }
+                with patch(
+                    "engine.assessment.assess_quantum_trust",
+                    return_value=expected_quantum,
+                ) as quantum_assess:
+                    status, report = call_app(
+                        "/api/v1/intelligence/assess", method="POST", body=payload,
+                    )
+                self.assertEqual(status, 200, report)
+                self.assertEqual(report["quantum_trust"], expected_quantum)
+                quantum_assess.assert_called_once()
+                self.assertEqual(
+                    quantum_assess.call_args.args[2],
+                    payload["security_context"],
+                )
+                self.assertTrue(report["audit_hash"])
+                self.assertTrue(main.ledger.verify_chain()[0])
+                forensic_status, forensic = call_app(
+                    f"/api/v1/forensic/{report['txn_id']}"
+                )
+                self.assertEqual(forensic_status, 200, forensic)
+                self.assertEqual(
+                    forensic["report"]["quantum_trust"],
+                    expected_quantum,
+                )
+            finally:
+                main.ledger = original_ledger
+                main.API_KEY = original_key
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
