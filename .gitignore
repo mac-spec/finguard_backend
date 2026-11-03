@@ -1,0 +1,16 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+finguard_audit.db
+finguard_audit.db-wal
+finguard_audit.db-shm
+artifacts/synthetic-creditcard-demo/
+artifacts/synthetic-finguard-v1/
+artifacts/demo-runs/
+artifacts/frontend-ml-check/
+artifacts/frontend-context-check/
+data/synthetic_creditcard.csv
+data/synthetic_finguard_v1.csv
+data/demo-runs/
+.DS_Store
