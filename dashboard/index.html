@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#08090b">
+  <title>FinGuard — Live Fraud Intelligence</title>
+  <link rel="stylesheet" href="/dashboard-assets/styles.css">
+  <script src="/dashboard-assets/app.js" defer></script>
+</head>
+<body>
+  <canvas id="particle-field" aria-hidden="true"></canvas>
+  <div class="ambient ambient-a" aria-hidden="true"></div>
+  <div class="ambient ambient-b" aria-hidden="true"></div>
+  <div class="gold-orb" aria-hidden="true"><span class="orb-halo"></span><span class="orb-core"></span></div>
+
+  <div class="page-shell">
+    <header class="topbar">
+      <a class="brand" href="/dashboard" aria-label="FinGuard home">
+        <span class="brand-mark"><span>F</span></span>
+        <span class="brand-copy"><strong>FINGUARD</strong><small>TRUST INTELLIGENCE</small></span>
+      </a>
+      <div class="topbar-right">
+        <span class="environment-label"><span class="environment-dot"></span> DEFENSIVE MONITORING</span>
+        <span id="connection-state" class="connection-state"><span class="state-dot"></span><span id="connection-text">NOT CONNECTED</span></span>
+      </div>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="hero-copy">
+          <div class="eyebrow"><span class="eyebrow-line"></span> FINANCIAL SIGNAL MONITOR</div>
+          <h1>Stay ahead of<br><span>the suspicious.</span></h1>
+          <p class="hero-description">A clearer view of transaction risk, model confidence and explanation integrity — with alerts that reach you as soon as a scan finds something unusual.</p>
+          <div class="hero-actions">
+            <button id="activate-alerts" class="button button-primary" type="button"><span class="button-pulse"></span> Activate live alerts</button>
+            <button id="sound-state" class="button button-quiet" type="button" aria-pressed="false"><span class="sound-icon">♫</span><span id="sound-label">Sound off</span></button>
+          </div>
+          <div class="hero-note"><span class="tiny-shield">◇</span> Alerts prioritise review. They do not block or reverse payments.</div>
+        </div>
+        <div class="hero-orbit" aria-hidden="true">
+          <div class="orbit-label orbit-label-top">SIGNAL / 01</div>
+          <div class="orbit-label orbit-label-bottom">ANALYSE · VERIFY · ALERT</div>
+          <div class="orbit-line orbit-line-one"></div>
+          <div class="orbit-line orbit-line-two"></div>
+          <div class="orbit-point"></div>
+        </div>
+      </section>
+
+      <section class="metrics" aria-label="Scan statistics">
+        <article class="metric-card">
+          <span class="metric-label">TRANSACTIONS SCANNED</span>
+          <strong id="metric-scanned" class="metric-value">0</strong>
+          <span class="metric-foot">Current session</span>
+        </article>
+        <article class="metric-card">
+          <span class="metric-label">FLAGGED FOR REVIEW</span>
+          <strong id="metric-flagged" class="metric-value metric-amber">0</strong>
+          <span class="metric-foot">Signals needing attention</span>
+        </article>
+        <article class="metric-card">
+          <span class="metric-label">HIGH-RISK SIGNALS</span>
+          <strong id="metric-high" class="metric-value metric-red">0</strong>
+          <span class="metric-foot">Urgent review priority</span>
+        </article>
+        <article class="metric-card metric-status-card">
+          <span class="metric-label">MONITOR STATUS</span>
+          <strong id="metric-status" class="metric-status-value">Standby</strong>
+          <span class="metric-foot"><span class="status-indicator"></span> Waiting for a scan event</span>
+        </article>
+      </section>
+
+      <section class="workspace">
+        <article class="panel intake-panel">
+          <div class="panel-heading">
+            <div><span class="section-kicker">01 / INPUT</span><h2>Transaction intake</h2></div>
+            <span class="panel-tag">CSV · UP TO 5,000 ROWS</span>
+          </div>
+          <p class="panel-description">Import a bank transaction CSV to run the existing FinGuard review pipeline.</p>
+
+          <label class="field-label" for="api-key">API key <span>Optional when not configured on the server</span></label>
+          <input id="api-key" class="text-field" type="password" autocomplete="off" placeholder="Enter FINGUARD_API_KEY when required">
+
+          <div id="drop-zone" class="drop-zone" role="button" tabindex="0" aria-label="Choose a CSV file or drop it here">
+            <input id="csv-file" type="file" accept=".csv,text/csv" hidden>
+            <span class="upload-symbol">↥</span>
+            <strong id="file-title">Drop a transaction CSV here</strong>
+            <span id="file-subtitle">or <span class="text-link">browse files</span> · CSV format</span>
+          </div>
+
+          <div class="file-actions">
+            <button id="scan-button" class="button button-primary button-wide" type="button" disabled>Scan transactions <span aria-hidden="true">↗</span></button>
+            <button id="sample-button" class="button button-outline" type="button">Load sample</button>
+          </div>
+          <div id="scan-message" class="inline-message" role="status">No file selected. Load a sample or choose a CSV.</div>
+
+          <div class="table-heading"><div><span class="section-kicker">LATEST BATCH</span><h3>Scan results</h3></div><span id="batch-count" class="small-count">0 records</span></div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>TRANSACTION</th><th>AMOUNT</th><th>REVIEW</th></tr></thead>
+              <tbody id="results-body"><tr><td colspan="3" class="empty-cell">Your latest scan will appear here.</td></tr></tbody>
+            </table>
+          </div>
+          <p id="model-warning" class="model-warning" hidden></p>
+        </article>
+
+        <aside class="panel feed-panel">
+          <div class="panel-heading">
+            <div><span class="section-kicker">02 / LIVE FEED</span><h2>Risk notifications</h2></div>
+            <span class="live-pill"><span class="live-dot"></span> LIVE</span>
+          </div>
+          <div class="feed-summary">
+            <div><span class="feed-summary-label">EVENT STREAM</span><strong id="feed-state">DISCONNECTED</strong></div>
+            <div class="feed-wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+          </div>
+          <div id="notification-feed" class="notification-feed" aria-live="polite">
+            <div class="feed-empty">
+              <span class="feed-empty-icon">⌁</span>
+              <strong>No new risk signals</strong>
+              <p>Activate live alerts, then run a scan. New scan alerts will appear here immediately.</p>
+            </div>
+          </div>
+          <div class="sound-legend">
+            <span><i class="legend-dot legend-medium"></i> Mild risk · one beep</span>
+            <span><i class="legend-dot legend-high"></i> High risk · three beeps</span>
+          </div>
+        </aside>
+      </section>
+
+      <footer class="footer">
+        <span>FINGUARD <i>·</i> TRUST THE SIGNAL, VERIFY THE EXPLANATION.</span>
+        <span>DEMO SYSTEM <i>·</i> NOT A PAYMENT AUTHORITY</span>
+      </footer>
+    </main>
+  </div>
+
+  <div id="toast-stack" class="toast-stack" aria-live="assertive" aria-atomic="false"></div>
+</body>
+</html>

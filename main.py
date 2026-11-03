@@ -1,20 +1,24 @@
 """FinGuard HTTP API with strict production configuration and model-provenance gates."""
 from __future__ import annotations
 
+import asyncio
 import hmac
 import json
 import logging
 import os
+import secrets
+import time
 import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
 import pandas as pd
-from fastapi import Depends, FastAPI, Header, HTTPException, Path as FastAPIPath, Query, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Path as FastAPIPath, Query, Request, WebSocket, WebSocketDisconnect
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, JSONResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
@@ -24,6 +28,74 @@ ENVIRONMENT = os.getenv("FINGUARD_ENV", "development").strip().lower()
 API_KEY = os.getenv("FINGUARD_API_KEY", "").strip()
 MAX_REQUEST_BYTES = 2 * 1024 * 1024
 logger = logging.getLogger("finguard.api")
+
+# The dashboard receives alerts only from scans performed by this running API process.
+# WebSocket sessions are short-lived, single-use tokens created after API-key validation.
+DASHBOARD_DIR = Path(__file__).resolve().parent / "dashboard"
+_alert_sockets: set[WebSocket] = set()
+_alert_session_tokens: dict[str, float] = {}
+_alert_event_loop: asyncio.AbstractEventLoop | None = None
+
+
+async def _broadcast_dashboard_event(event: dict) -> None:
+    stale_sockets = []
+    for socket in tuple(_alert_sockets):
+        try:
+            await socket.send_json(event)
+        except Exception:
+            stale_sockets.append(socket)
+    for socket in stale_sockets:
+        _alert_sockets.discard(socket)
+
+
+def _publish_dashboard_alerts(scan_result: dict) -> None:
+    """Fan out a privacy-minimised event to dashboards connected to this API worker."""
+    alerts = scan_result.get("alerts") or []
+    loop = _alert_event_loop
+    if loop is None or loop.is_closed():
+        return
+
+    safe_alerts = []
+    for alert in alerts[:20]:
+        high_risk = (
+            alert.get("fraud_risk_level") == "HIGH"
+            or alert.get("trust_classification") == "Manipulated"
+            or alert.get("explanation_verdict") == "UNTRUSTWORTHY"
+        )
+        safe_alerts.append({
+            "transaction_id": str(alert.get("id") or "unidentified")[:128],
+            "description": str(alert.get("description") or "Transaction requires review")[:120],
+            "amount": round(float(alert.get("amount") or 0), 2),
+            "date": str(alert.get("date") or "")[:64],
+            "risk_level": "HIGH" if high_risk else "MEDIUM",
+            "reasons": [str(reason)[:240] for reason in (alert.get("reasons") or [])[:5]],
+        })
+
+    high_risk_count = sum(
+        1 for alert in alerts
+        if alert.get("fraud_risk_level") == "HIGH"
+        or alert.get("trust_classification") == "Manipulated"
+        or alert.get("explanation_verdict") == "UNTRUSTWORTHY"
+    )
+    event = {
+        "type": "scan_alerts",
+        "notification_level": scan_result.get("notification_level", "LOW"),
+        "flagged_count": scan_result.get("flagged_count", len(safe_alerts)),
+        "high_risk_count": high_risk_count,
+        "transactions_analyzed": scan_result.get("transactions_analyzed", 0),
+        "alerts": safe_alerts,
+        "alerts_truncated": len(alerts) > len(safe_alerts),
+        "created_at": datetime.now().astimezone().isoformat(),
+    }
+    future = asyncio.run_coroutine_threadsafe(_broadcast_dashboard_event(event), loop)
+
+    def log_broadcast_failure(completed):
+        try:
+            completed.result()
+        except Exception:
+            logger.exception("Could not broadcast live dashboard alert.")
+
+    future.add_done_callback(log_broadcast_failure)
 
 if ENVIRONMENT not in {"development", "test", "production"}:
     raise RuntimeError("FINGUARD_ENV must be development, test, or production.")
@@ -536,6 +608,56 @@ async def security_headers(request: Request, call_next):
 # it remains outermost and can return 413 before parsers allocate large bodies.
 app.add_middleware(RequestSizeLimitMiddleware)
 
+# A lightweight dashboard is shipped with this repository so the API and browser UI
+# can be run together without a separate frontend project.
+app.mount(
+    "/dashboard-assets",
+    StaticFiles(directory=str(DASHBOARD_DIR)),
+    name="dashboard-assets",
+)
+
+
+@app.get("/dashboard", include_in_schema=False)
+def dashboard():
+    return FileResponse(DASHBOARD_DIR / "index.html")
+
+
+@app.post("/api/v1/alerts/session", include_in_schema=False)
+def create_alert_session(_: None = Depends(require_api_key)):
+    """Issue a one-use WebSocket ticket; the actual API key is never put in a URL."""
+    now = time.monotonic()
+    for token, expires_at in list(_alert_session_tokens.items()):
+        if expires_at <= now:
+            _alert_session_tokens.pop(token, None)
+    token = secrets.token_urlsafe(32)
+    _alert_session_tokens[token] = now + 60
+    return {"token": token, "expires_in": 60}
+
+
+@app.websocket("/ws/alerts")
+async def dashboard_alert_stream(websocket: WebSocket):
+    """Stream newly scanned alerts to connected dashboard tabs in this API process."""
+    global _alert_event_loop
+    token = websocket.query_params.get("token", "")
+    expires_at = _alert_session_tokens.pop(token, None)
+    if not token or expires_at is None or expires_at <= time.monotonic():
+        await websocket.close(code=4401)
+        return
+
+    await websocket.accept()
+    _alert_event_loop = asyncio.get_running_loop()
+    _alert_sockets.add(websocket)
+    try:
+        while True:
+            # Client pings keep intermediaries from silently expiring an idle socket.
+            await websocket.receive_text()
+    except WebSocketDisconnect:
+        pass
+    finally:
+        _alert_sockets.discard(websocket)
+        if not _alert_sockets:
+            _alert_event_loop = None
+
 
 @app.exception_handler(RequestValidationError)
 async def validation_error_handler(request: Request, exc):
@@ -640,7 +762,7 @@ def scan_imported_transactions(
             for alert in alerts
         ):
             notification_level = "HIGH"
-    return {
+    response_payload = {
         "transactions_analyzed": len(request.transactions),
         "total_amount": round(total_amount, 2),
         "flagged_count": len(alerts),
@@ -662,6 +784,8 @@ def scan_imported_transactions(
             "Review flags are not confirmed fraud. Scores are for prioritizing review only; this prototype does not block or reverse payments."
         ),
     }
+    _publish_dashboard_alerts(response_payload)
+    return response_payload
 
 
 @app.post("/api/v1/transactions/audit")
