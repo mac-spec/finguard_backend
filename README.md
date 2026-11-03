@@ -514,3 +514,17 @@ git push -u origin main
 
 If the repository already has a remote, do not run `git remote add origin` again;
 check it first with `git remote -v`.
+
+
+## Built-in visual dashboard and live alert stream
+
+The repository includes a small browser dashboard served by the same FastAPI process:
+
+- Open `http://127.0.0.1:8000/dashboard` after starting `uvicorn main:app --reload`.
+- Import a normalized bank-transaction CSV and choose **Scan transactions**. Common headers such as `id`, `date`, `description`, `amount`, `direction`, `category`, `method`, `receiver`, and `status` are supported; aliases such as `transaction_id`, `timestamp`, and `narration` are also accepted.
+- Choose **Activate live alerts** to connect the browser to the backend's WebSocket stream. If `FINGUARD_API_KEY` is configured, enter it in the dashboard before activating alerts.
+- Mild-risk review events produce one short beep; high-risk events produce three beeps. Browser desktop notifications are optional and require the browser's notification permission. Audio starts only after the user activates it, as required by browser autoplay restrictions.
+- A **Load sample** button submits one clearly labelled synthetic example so the dashboard can be exercised without a bank CSV.
+
+The live stream is event-driven: it broadcasts the results of calls to `POST /api/v1/transactions/scan` to dashboards connected to the same running API process. It is not a bank webhook, payment-rail listener, or persistent multi-worker message broker. No event is generated until a scan request is made. For multiple API workers or deployment across hosts, replace the in-process WebSocket fan-out with a shared broker. The dashboard only displays review signals; it does not block, reverse, or approve payments. As elsewhere in this prototype, synthetic model scores are not validated fraud probabilities.
+
