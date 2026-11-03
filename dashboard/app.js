@@ -365,7 +365,9 @@
     }
   };
 
-  $('drop-zone').addEventListener('click', () => $('csv-file').click());
+  $('drop-zone').addEventListener('click', (event) => {
+    if (event.target !== $('csv-file')) $('csv-file').click();
+  });
   $('drop-zone').addEventListener('keydown', (event) => {
     if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); $('csv-file').click(); }
   });
