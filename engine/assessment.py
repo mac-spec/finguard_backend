@@ -11,6 +11,7 @@ from engine.behaviour_intelligence import analyze_behaviour
 from engine.graph_intelligence import analyze_graph
 from engine.simulator_and_model import _torch_bundle, anomaly_score, explain, predict_score
 from engine.verdict import evaluate
+from engine.quantum_trust import assess_quantum_trust
 
 
 def _milliseconds(start: float) -> float:
@@ -23,6 +24,7 @@ def assess_transaction(
     history: list[dict[str, Any]],
     *,
     enable_counterfactual: bool = False,
+    security_context: dict[str, Any] | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Run all currently available FinGuard signals without collapsing them.
 
@@ -76,6 +78,9 @@ def assess_transaction(
     mark = time.perf_counter()
     behaviour = analyze_behaviour(current, earlier_history)
     timings["behaviour"] = _milliseconds(mark)
+    mark = time.perf_counter()
+    quantum_trust = assess_quantum_trust(model_row, probability, security_context)
+    timings["quantum_trust"] = _milliseconds(mark)
 
     model_provenance = (
         _torch_bundle.metadata.get("training", {}).get("data_classification", "unknown")
@@ -135,6 +140,7 @@ def assess_transaction(
         "behavioural_intelligence": behaviour,
         "explanation": explanation_safe,
         "trust_verification": trust_safe,
+        "quantum_trust": quantum_trust,
         "forensic_report": "\n".join(forensic_sections),
         "audit_hash": "",
         "component_latency_ms": timings,
@@ -148,6 +154,7 @@ def assess_transaction(
         "anomaly_score": round(anomaly, 6),
         "graph_intelligence": graph,
         "behavioural_intelligence": behaviour,
+        "quantum_trust": quantum_trust,
         "forensic_report": result["forensic_report"],
         "component_latency_ms": timings,
     }

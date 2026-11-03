@@ -528,3 +528,29 @@ The repository includes a small browser dashboard served by the same FastAPI pro
 
 The live stream is event-driven: it broadcasts the results of calls to `POST /api/v1/transactions/scan` to dashboards connected to the same running API process. It is not a bank webhook, payment-rail listener, or persistent multi-worker message broker. No event is generated until a scan request is made. For multiple API workers or deployment across hosts, replace the in-process WebSocket fan-out with a shared broker. The dashboard only displays review signals; it does not block, reverse, or approve payments. As elsewhere in this prototype, synthetic model scores are not validated fraud probabilities.
 
+
+
+## QuantumTrust Engine (quantum-inspired, classical implementation)
+
+QuantumTrust is an additional assurance layer in the unified intelligence assessment. It does **not** use quantum hardware, quantum cryptography, or quantum algorithms. It uses a deterministic, bounded ensemble of classical transaction perturbations to report model-score dispersion, decision flips, and sensitivity. It keeps these signals separate from fraud probability and TrustShield explanation trust.
+
+The `POST /api/v1/intelligence/assess` request accepts an optional `security_context` inventory:
+
+```json
+{
+  "security_context": {
+    "key_exchange_algorithm": "ECDHE",
+    "signature_algorithm": "RSA-2048",
+    "symmetric_algorithm": "AES-256"
+  }
+}
+```
+
+Omit `security_context` when the platform cannot provide a verified inventory. In that case quantum-era cryptographic exposure is returned as `NOT_ASSESSED`, not zero risk. Algorithm-name matching is a migration-planning heuristic only; it does not inspect deployed TLS, certificates, code, keys, protocol negotiation, or cryptographic implementation. PQC names such as ML-KEM and ML-DSA are treated as candidate signals, not proof of standards-conformant deployment.
+
+The response adds `quantum_trust` with:
+- **Uncertainty:** ensemble mean, standard deviation, variance and binary decision entropy.
+- **Adversarial vulnerability:** maximum/mean score shift and decision-flip rate under bounded perturbations of the existing manipulable transaction features.
+- **Quantum-era cryptographic risk:** an optional inventory-based readiness signal for public-key and symmetric algorithms.
+
+These are uncalibrated research/prototype indicators. They must not independently approve, decline, block, or reverse a payment. Validate and calibrate against representative held-out transactions and a documented threat model before operational use.

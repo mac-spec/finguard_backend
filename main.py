@@ -438,6 +438,15 @@ class BehaviourAnalysisRequest(BaseModel):
     history: list[TransferContext] = Field(default_factory=list, max_length=5000)
 
 
+
+class QuantumSecurityContext(BaseModel):
+    """Optional cryptographic inventory supplied by the payment platform."""
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    key_exchange_algorithm: str | None = Field(default=None, max_length=100)
+    signature_algorithm: str | None = Field(default=None, max_length=100)
+    symmetric_algorithm: str | None = Field(default=None, max_length=100)
+
+
 class UnifiedAssessmentRequest(BaseModel):
     """One current transaction plus optional graph and same-account history."""
     model_config = ConfigDict(extra="forbid")
@@ -447,6 +456,7 @@ class UnifiedAssessmentRequest(BaseModel):
     occurred_at: datetime
     history: list[TransferContext] = Field(default_factory=list, max_length=5000)
     enable_counterfactual: bool = False
+    security_context: "QuantumSecurityContext | None" = None
 
     @field_validator("occurred_at")
     @classmethod
@@ -499,6 +509,7 @@ class UnifiedAssessmentResponse(BaseModel):
     behavioural_intelligence: BehaviourIntelligenceResponse
     explanation: dict
     trust_verification: dict
+    quantum_trust: dict
     forensic_report: str
     audit_hash: str
     component_latency_ms: dict[str, float]
@@ -998,6 +1009,7 @@ def assess_with_intelligence(
         result, audit_payload = assess_transaction(
             transaction, current_context, history,
             enable_counterfactual=request.enable_counterfactual,
+            security_context=(request.security_context.model_dump(exclude_none=True) if request.security_context else None),
         )
         result["audit_hash"] = ledger.append(audit_payload)
         return result
