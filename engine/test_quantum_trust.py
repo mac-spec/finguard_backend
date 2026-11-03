@@ -28,6 +28,10 @@ class QuantumTrustTests(unittest.TestCase):
         self.assertEqual(result["readiness"], "PQC_CANDIDATE_PRESENT")
         self.assertTrue(any("verify implementation" in item for item in result["findings"]))
 
+    def test_symmetric_only_inventory_does_not_claim_pqc(self):
+        result = _crypto_posture({"symmetric_algorithm": "AES-256"})
+        self.assertEqual(result["readiness"], "REVIEW_REQUIRED")
+
     def test_invalid_ensemble_size_is_rejected(self):
         with self.assertRaises(ValueError):
             assess_quantum_trust({"txn_id": "test"}, 0.2, ensemble_runs=2)

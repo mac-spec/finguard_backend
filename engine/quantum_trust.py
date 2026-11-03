@@ -44,12 +44,16 @@ def _crypto_posture(context: dict[str, Any] | None) -> dict[str, Any]:
     findings: list[str] = []
     score = 0.0
     assessed = 0
+    pqc_candidate_present = False
+    classical_public_key_present = False
 
     if kex:
         assessed += 1
-        if any(name in kex for name in PQC_KEX) or "HYBRID" in kex and any(name in kex for name in PQC_KEX):
+        if any(name in kex for name in PQC_KEX):
+            pqc_candidate_present = True
             findings.append("Key exchange inventory identifies a post-quantum or hybrid candidate; verify implementation and standards conformance.")
         elif any(name in kex for name in CLASSICAL_KEX):
+            classical_public_key_present = True
             score += 100
             findings.append("Classical public-key key exchange is exposed to a future sufficiently capable quantum adversary; plan a post-quantum migration.")
         else:
@@ -58,8 +62,10 @@ def _crypto_posture(context: dict[str, Any] | None) -> dict[str, Any]:
     if signature:
         assessed += 1
         if any(name in signature for name in PQC_SIGNATURES):
+            pqc_candidate_present = True
             findings.append("Signature inventory identifies a post-quantum candidate; verify implementation and standards conformance.")
         elif any(name in signature for name in CLASSICAL_SIGNATURES):
+            classical_public_key_present = True
             score += 100
             findings.append("Classical public-key signatures may be vulnerable to future quantum-enabled forgery; plan migration and signature agility.")
         else:
@@ -86,7 +92,12 @@ def _crypto_posture(context: dict[str, Any] | None) -> dict[str, Any]:
         }
 
     exposure = round(min(100.0, score / assessed), 2)
-    readiness = "PQC_CANDIDATE_PRESENT" if exposure == 0 else "MIGRATION_REQUIRED" if exposure >= 65 else "REVIEW_REQUIRED"
+    if classical_public_key_present:
+        readiness = "MIGRATION_REQUIRED"
+    elif pqc_candidate_present:
+        readiness = "PQC_CANDIDATE_PRESENT"
+    else:
+        readiness = "REVIEW_REQUIRED"
     return {
         "assessment_status": "ASSESSED",
         "quantum_era_exposure_score": exposure,
